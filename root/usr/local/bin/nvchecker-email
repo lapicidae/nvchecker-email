@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+# MIT licensed
+# Copyright (c) 2020,2022 lilydjwg <lilydjwg@gmail.com>, et al.
+
+"""
+A simple wrapper to send email notifications while running nvchecker.
+"""
+
+import os
+import subprocess
+import json
+
+from typing import TYPE_CHECKING
+
+import platformdirs
+
+
+def get_default_config() -> str:
+    confdir = platformdirs.user_config_dir(appname="nvchecker")
+    file = os.path.join(confdir, "nvchecker.toml")
+    return file
+
+
+def get_default_emailconf() -> str:
+    confdir = platformdirs.user_config_dir(appname="nvchecker")
+    file = os.path.join(confdir, "email.toml")
+    return file
+
+
+def get_args():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="send e-mail for available updates after running nvchecker"
+    )
+    default_config = get_default_config()
+    parser.add_argument(
+        "-c",
+        "--file",
+        metavar="FILE",
+        type=str,
+        default=default_config,
+        help=f"software version configuration file [default: {default_config}]",
+    )
+    default_emailconf = get_default_emailconf()
+    parser.add_argument(
+        "-m",
+        "--emailfile",
+        metavar="FILE",
+        type=str,
+        default=default_emailconf,
+        help=f"email configuration file [default: {default_emailconf}]",
+    )
+    parser.add_argument(
+        "-k",
+        "--keyfile",
+        metavar="FILE",
+        type=str,
+        help="use specified keyfile (override the one in configuration file)",
+    )
+    parser.add_argument(
+        "-t",
+        "--tries",
+        default=1,
+        type=int,
+        metavar="N",
+        help="try N times when network errors occur",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="mark all versions as updated after successfully sending the e-mail (nvtake --all)",
+    )
+    parser.add_argument(
+        "--failures",
+        action="store_true",
+        help="exit with code 3 if failures / errors happen during checking",
+    )
+
+    return parser.parse_args()
+
+
+def send_mail(*input):
+    # print('send email...')
+
+    if TYPE_CHECKING:
+        import tomli as tomllib
+    else:
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+
+    import datetime
+    import smtplib
+
+    # read args
+    args = get_args()
+    mailConf = args.emailfile
+
+    try:
+        with open(mailConf, "rb") as f:
+            config = tomllib.load(f)
+            smtp_host = config.get("SMTP", {}).get("host", "test@example.com")
+            smtp_port = config.get("SMTP", {}).get("port", 25)
+            smtp_starttls = config.get("SMTP", {}).get("starttls", False)
+            auth_user = config.get("AUTH", {}).get("user", "user@example.com")
+            auth_password = config.get("AUTH", {}).get("password", "PaSsWoRd")
+            addr_from = config.get("ADDR", {}).get("from", "sender@example.com")
+            addr_to = config.get("ADDR", {}).get("to", "receiver@example.com")
+    except tomllib.TOMLDecodeError as e:
+        print(e.args[0])
+        if args.failures:
+            exit(3)
+        else:
+            exit(1)
+
+    # current date and time
+    now_dateTime = datetime.datetime.now().strftime("%c")
+
+    ## Email content
+    headart = []
+    headart.append("                _               _")
+    headart.append("               | |             | |")
+    headart.append(" _ ____   _____| |__   ___  ___| | _____ _ __")
+    headart.append("| '_ \\ \\ / / __| '_ \\ / _ \\/ __| |/ / _ \\ '__|")
+    headart.append("| | | \\ V / (__| | | |  __/ (__|   <  __/ |")
+    headart.append("|_| |_|\\_/ \\___|_| |_|\\___|\\___|_|\\_\\___|_|")
+    headart.append("\n")
+
+    content = "\n".join(headart) + now_dateTime + "\n" + "".join(str(i) for i in input)
+
+    # Set up SMTP connection to Gmail's SMTP server
+    mail = smtplib.SMTP(smtp_host, smtp_port)
+
+    try:
+        # Identify yourself to the SMTP server
+        mail.ehlo()
+        # Start TLS encryption for the connection
+        if smtp_starttls is True:
+            mail.starttls()
+
+        # Login to SMTP server
+        mail.login(auth_user, auth_password)
+
+        # Email details
+        subject = f"nvchecker [{now_dateTime}]"
+
+        # Construct email message with headers
+        header = f"To: {addr_to}\nFrom: {addr_from}\nSubject: {subject}\n\n"
+        content = header + content
+
+        # Send email
+        mail.sendmail(addr_from, addr_to, content)
+
+    except Exception as e:
+        print("Error: ", str(e))
+        if args.failures:
+            exit(3)
+        else:
+            exit(1)
+
+    finally:
+        # Close SMTP connection
+        mail.quit()
+        # print('\tsuccessful')
+
+
+def main():
+    args = get_args()
+
+    updates = []
+
+    rfd, wfd = os.pipe()
+    cmd = [
+        "nvchecker",
+        "--logger",
+        "both",
+        "--json-log-fd",
+        str(wfd),
+    ]
+    if args.file:
+        cmd.extend(["-c", args.file])
+    if args.keyfile:
+        cmd.extend(["-k", args.keyfile])
+    if args.tries:
+        cmd.extend(["-t", str(args.tries)])
+    if args.failures:
+        cmd.append("--failures")
+
+    process = subprocess.Popen(cmd, pass_fds=(wfd,))
+    os.close(wfd)
+
+    output = os.fdopen(rfd)
+    for l in output:
+        j = json.loads(l)
+        event = j["event"]
+        if event == "updated":
+            # updates.append("%(name)s updated to version %(version)s" % j)
+            updates.append("%(name)s: updated from %(old_version)s to %(version)s" % j)
+
+    ret = process.wait()
+    if ret != 0:
+        raise subprocess.CalledProcessError(ret, cmd)
+
+    if updates:
+        # print("nvchecker:")
+        # for p in updates:
+        #     print("\t" + p)
+        send_mail("\n".join(updates))
+
+    if args.update:
+        rfd, wfd = os.pipe()
+        cmd_take = [
+            "nvtake",
+            "--logger",
+            "both",
+            "--json-log-fd",
+            str(wfd),
+            "--all"
+        ]
+        if args.file:
+            cmd_take.extend(["--file", args.file])
+        process_take = subprocess.Popen(cmd_take, pass_fds=(wfd,))
+        os.close(wfd)
+        ret_take = process_take.wait()
+        if ret_take != 0:
+            raise subprocess.CalledProcessError(ret_take, cmd_take)
+
+
+if __name__ == "__main__":
+    main()

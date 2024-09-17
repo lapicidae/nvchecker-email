@@ -1,0 +1,28 @@
+#!/bin/ash
+# shellcheck shell=dash
+
+RUN_command='nvchecker-email'
+USAGE=$(printf 'Starts "%s" by default with the expected file paths.\nAlternatively, specify command with "-c [command]"' "$RUN_command")
+
+while getopts hc: opt; do 
+	case $opt in
+		c)
+			RUN_command="$OPTARG";;
+		h)
+			printf 'HELP:\n%s\n' "$USAGE";;
+		\?)
+			printf "\nInvalid option or missing argument\n";
+			printf 'HELP:\n%s\n' "$USAGE";
+			exit 0
+			;;
+	esac
+done
+
+if [ "$RUN_command" = 'nvchecker-email' ]; then
+	if [ "$NVCHECKER_UPDATE" != 'false' ]; then
+		UPD='--update'
+	fi
+	eval "$(command -v nvchecker-email)" --file "$HOME/nvchecker.toml" --email "$HOME/email.toml" "$UPD"
+else
+	eval "$RUN_command"
+fi

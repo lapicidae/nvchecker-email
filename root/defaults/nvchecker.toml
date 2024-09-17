@@ -1,0 +1,33 @@
+[__config__]
+oldver = "old_ver.json"
+newver = "new_ver.json"
+
+[PySide]
+source = "pypi"
+pypi = "PySide"
+
+[fbcat]
+source = "aur"
+
+[ffmpeg]
+source = "git"
+git = "https://git.ffmpeg.org/ffmpeg.git"
+prefix = "n"
+exclude_regex = ".*v.*"
+
+[google-chrome]
+source = "cmd"
+cmd = '''wget -qO- http://dl.google.com/linux/chrome/rpm/stable/x86_64/repodata/other.xml.gz | zgrep -A1 "google-chrome-stable" | awk -F\" '/version/ {print $4"-"$6}' '''
+
+[nvchecker]
+source = "github"
+github = "lilydjwg/nvchecker"
+
+[ssed]
+source = "regex"
+regex = "The current version is ([\\d.]+)\\."
+url = "http://sed.sourceforge.net/grabbag/ssed/"
+
+[winterpy]
+source = "github"
+github = "lilydjwg/winterpy"

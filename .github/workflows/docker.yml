@@ -1,0 +1,102 @@
+name: Docker Build & Push
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+      - nvchecker-email-logo.svg
+      - Jenkinsfile
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Scenario tags'
+        type: choice
+        options:
+          - test
+          - build
+        required: true
+      trigger:
+        type: string
+jobs:
+  docker:
+    if: github.event.inputs.tags != 'test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Arguments
+        id: get_arg
+        run: |
+          printf 'nvcVersion=%s\n' "$(docker run -it --rm alpine:latest sh -c "apk update —no-progress --quiet && apk info nvchecker | head -n 1 | cut -d - -f 2 | tr -d '\n'")"
+          printf 'dateTime=%(%Y-%m-%dT%H:%M:%S%z)T\n' >> $GITHUB_OUTPUT
+          printf 'nvcRevision=%s\n' "$(git ls-remote -t 'https://github.com/lilydjwg/nvchecker.git' "v${nvcVersion}" | cut -f 1)" >> $GITHUB_OUTPUT
+          printf 'baseDigest=%s\n' "$(docker image pull alpine:latest | grep -i digest | cut -d ' ' -f 2)" >> $GITHUB_OUTPUT
+      - name: Info
+        run: |
+          printf '<<<<<<<<< BUILD ARGUMENTS >>>>>>>>>\n'
+          printf 'Build Timestamp:\t%s\n' "${{ steps.get_arg.outputs.dateTime }}"
+          printf 'nvchecker Version:\t%s\n' "${{ steps.get_arg.outputs.nvcVersion }}"
+          printf 'nvchecker Revision:\t%s\n' "${{ steps.get_arg.outputs.nvcRevision }}"
+          printf 'Base Image Digest:\t%s\n' "${{ steps.get_arg.outputs.baseDigest }}"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          build-args: |
+            dateTime=${{ steps.get_arg.outputs.dateTime }}
+            nvcRevision=${{ steps.get_arg.outputs.nvcRevision }}
+            nvcVersion=${{ steps.get_arg.outputs.nvcVersion }}
+            baseDigest=${{ steps.get_arg.outputs.baseDigest }}
+          no-cache: true
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ env.latestTAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ steps.get_arg.outputs.nvcVersion }}
+            ghcr.io/${{ github.repository }}:${{ env.latestTAG }}
+            ghcr.io/${{ github.repository }}:${{ steps.get_arg.outputs.nvcVersion }}
+      - name: Send mail
+        if: github.event_name == 'workflow_dispatch'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{secrets.GMAIL_USER}}
+          password: ${{secrets.GMAIL_PASS}}
+          from: GitHub
+          to: ${{secrets.EMAIL}}
+          subject: "Action ${{job.status}}: ${{github.repository}} - ${{github.workflow}} #${{github.run_id}}"
+          body: |
+            ${{job.status}}
+            Action "${{github.workflow}}" started by ${{github.actor}} (${{ github.event.inputs.trigger }}) in ${{github.repository}}.
+            View workflow run: ${{github.server_url}}/${{github.repository}}/actions/runs/${{github.run_id}}
+            Your faithful employee
+            ${{runner.name}} (${{runner.os}} - ${{runner.arch}})
+          html_body: |
+            <!DOCTYPE html>
+            <html>
+            <body>
+            <h1 style="text-transform:uppercase">${{job.status}}</h1>
+            <p>Action "${{github.workflow}}" started by ${{github.actor}} (${{ github.event.inputs.trigger }}) in ${{github.repository}}.</p>
+            <p><a href="${{github.server_url}}/${{github.repository}}/actions/runs/${{github.run_id}}" target="_blank" style="background-color:#4CAF50; border:none; color:white; padding:20px; text-align:center; text-decoration:none; display:inline-block; font-size:16px; margin:4px 2px; cursor:pointer; border-radius:12px;">View workflow run</a></p>
+            <p>Your faithful employee<br>
+            ${{runner.name}} (${{runner.os}} - ${{runner.arch}})</p>
+            </body>
+            </html>
+          priority: low
+    env:
+      imageNAME: nvchecker-email
+      latestTAG: latest

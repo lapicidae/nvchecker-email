@@ -1,0 +1,14 @@
+# Gmail example config
+
+[SMTP]
+host = 'smtp.gmail.com'
+port = 587
+starttls = true
+
+[AUTH]
+user = 'firstname.lastname@gmail.com'
+password = 'pAsSwOrD'                           # use https://myaccount.google.com/lesssecureapps
+
+[ADDR]
+from = 'firstname.lastname@gmail.com'
+to = 'firstname.lastname+nvchecker@gmail.com'   # you can append a plus ("+") sign and any combination of words or numbers after your email address.
