@@ -37,7 +37,7 @@ Compatible with docker-compose v2 schemas.
 version: "2.1"
 services:
   nvchecker-email:
-    image: lapicidae/nvchecker-email
+    image: ghcr.io/lapicidae/nvchecker-email:latest
     container_name: nvchecker-email
     environment:
       - TZ=Europe/London
@@ -54,7 +54,7 @@ docker run -d \
   -e TZ=Europe/London \
   -v /path/to/config:/nvchecker \
   --restart unless-stopped \
-  lapicidae/nvchecker-email
+  ghcr.io/lapicidae/nvchecker-email:latest
 ```
 
 ### Parameters
