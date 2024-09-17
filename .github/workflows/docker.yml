@@ -37,9 +37,10 @@ jobs:
       - name: Build Arguments
         id: get_arg
         run: |
+          nvcVersion="${{ steps.nvc_ver.outputs.nvcVersion }}"
           printf 'dateTime=%(%Y-%m-%dT%H:%M:%S%z)T\n' >> $GITHUB_OUTPUT
           printf 'nvcRevision=%s\n' "$(git ls-remote -t 'https://github.com/lilydjwg/nvchecker.git' "v${nvcVersion}" | cut -f 1)" >> $GITHUB_OUTPUT
-          printf 'nvcVersion=%s\n' "${{ steps.nvc_ver.outputs.nvcVersion }}" >> $GITHUB_OUTPUT
+          printf 'nvcVersion=%s\n' "${nvcVersion}" >> $GITHUB_OUTPUT
           printf 'baseDigest=%s\n' "$(docker image pull alpine:latest | grep -i digest | cut -d ' ' -f 2)" >> $GITHUB_OUTPUT
       - name: Info
         run: |
@@ -76,9 +77,9 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ env.latestTAG }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ env.nvcVersion }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${nvcVersion}
             ghcr.io/${{ github.repository }}:${{ env.latestTAG }}
-            ghcr.io/${{ github.repository }}:${{ env.nvcVersion }}
+            ghcr.io/${{ github.repository }}:${nvcVersion}
       - name: Send mail
         if: github.event_name == 'workflow_dispatch'
         uses: dawidd6/action-send-mail@v3
