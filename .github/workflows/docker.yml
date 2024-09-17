@@ -65,9 +65,9 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ env.latestTAG }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ steps.get_arg.outputs.nvcVersion }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageNAME }}:${{ env.nvcVersion }}
             ghcr.io/${{ github.repository }}:${{ env.latestTAG }}
-            ghcr.io/${{ github.repository }}:${{ steps.get_arg.outputs.nvcVersion }}
+            ghcr.io/${{ github.repository }}:${{ env.nvcVersion }}
       - name: Send mail
         if: github.event_name == 'workflow_dispatch'
         uses: dawidd6/action-send-mail@v3
