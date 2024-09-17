@@ -23,13 +23,23 @@ jobs:
     if: github.event.inputs.tags != 'test'
     runs-on: ubuntu-latest
     steps:
+      - name: Setup latest Alpine Linux
+        uses: jirutka/setup-alpine@v1
+        with:
+          packages: >
+            nvchecker
+      - name: Run script inside Alpine chroot as root
+        id: nvc_ver
+        run: |
+          apk update —no-progress --quiet
+          printf 'nvcVersion=%s\n' "$(apk info nvchecker | head -n 1 | cut -d - -f 2 | tr -d '\n')" >> $GITHUB_OUTPUT
+        shell: alpine.sh --root {0}
       - name: Build Arguments
         id: get_arg
         run: |
-          nvcVersion="$(docker run -it --rm alpine:latest sh -c "apk update —no-progress --quiet && apk info nvchecker | head -n 1 | cut -d - -f 2 | tr -d '\n'")"
           printf 'dateTime=%(%Y-%m-%dT%H:%M:%S%z)T\n' >> $GITHUB_OUTPUT
           printf 'nvcRevision=%s\n' "$(git ls-remote -t 'https://github.com/lilydjwg/nvchecker.git' "v${nvcVersion}" | cut -f 1)" >> $GITHUB_OUTPUT
-          printf 'nvcVersion=%s\n' "${nvcVersion}" >> $GITHUB_OUTPUT
+          printf 'nvcVersion=%s\n' "${{ steps.nvc_ver.outputs.nvcVersion }}" >> $GITHUB_OUTPUT
           printf 'baseDigest=%s\n' "$(docker image pull alpine:latest | grep -i digest | cut -d ' ' -f 2)" >> $GITHUB_OUTPUT
       - name: Info
         run: |
