@@ -33,6 +33,12 @@ _intro () {
 	printf '\n'
 	printf '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄⚟ Settings ⚞┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
 	printf '%-26s%s\n' 'Timezone:' "$TZ"
+	if [ -n "$PUID" ]; then
+		printf '%-26s%s\n' 'User ID:' "$PUID"
+	fi
+	if [ -n "$PGID" ]; then
+		printf '%-26s%s\n' 'Group ID:' "$PGID"
+	fi
 	if [ -n "$APK_ADD" ]; then
 		printf '%-26s%s\n' 'apk add:' "$APK_ADD"
 	fi
@@ -133,10 +139,12 @@ printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄�
 _initTZ
 
 if [ -n "$PUID" ] && [ "$PUID" != "$(id -u "$User")" ]; then
+	printf 'ID of user %s changed to %s\n' "$User" "$PUID"
 	usermod --non-unique --uid "$PUID" "$User"
 fi
 
 if [ -n "$PGID" ] && [ "$PGID" != "$(id -g "$Group")" ]; then
+	printf 'ID of Group %s changed to %s\n' "$Group" "$PGID"
 	groupmod --non-unique --gid "$PGID" "$Group"
 fi
 
