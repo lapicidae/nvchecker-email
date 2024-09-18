@@ -1,1 +1,2 @@
 0 1 * * * /usr/local/bin/cron_run -c nvchecker-email
+*/5 * * * * /usr/local/bin/conf_watch

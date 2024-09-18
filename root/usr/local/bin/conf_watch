@@ -1,0 +1,29 @@
+#!/bin/sh
+
+
+confFile="$HOME/nvchecker.toml"
+NVCHECKER_CONF_MD5='/dev/shm/NVCHECKER_CONF_MD5'
+confMD5=$(md5sum "$confFile" | cut -d ' ' -f 1 | tr -d '\n')
+
+
+if [ ! -s "$NVCHECKER_CONF_MD5" ]; then     # file exists and is not empty
+	echo "$confMD5" > "$NVCHECKER_CONF_MD5"
+
+elif [ -r "$NVCHECKER_CONF_MD5" ]; then
+	oldMD5=$(< "$NVCHECKER_CONF_MD5" tr -d '\n')
+	newMD5="$confMD5"
+	if [ "$oldMD5" != "$newMD5" ]; then
+		echo 'Config file Changed'
+		nvchecker --file "$confFile" --tries 1 --logging error
+
+		if nvcmp --file "$confFile" | grep -qi none; then
+			set -- "$(nvcmp --file "$confFile" | grep -i none | cut -d ' ' -f 1)"
+			for name in "$@"; do
+				echo "$name: update version records"
+				nvtake --file "$confFile" "$name"
+			done
+		fi
+
+        echo "$newMD5" > "$NVCHECKER_CONF_MD5"
+    fi
+fi
