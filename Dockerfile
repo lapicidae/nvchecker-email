@@ -34,6 +34,7 @@ RUN echo "**** install runtime packages ****" && \
     ln -s /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ >/etc/timezone && \
     echo "********* set permissions ********" && \
+    chmod 755 /usr/local/bin/conf_watch && \
     chmod 755 /usr/local/bin/cron-human && \
     chmod 755 /usr/local/bin/cron_run && \
     chmod 755 /usr/local/bin/docker-entrypoint.sh && \
