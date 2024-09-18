@@ -1,6 +1,7 @@
 [__config__]
-oldver = "old_ver.json"
+#keyfile = "keyfile.toml"
 newver = "new_ver.json"
+oldver = "old_ver.json"
 
 [PySide]
 source = "pypi"
