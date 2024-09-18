@@ -127,9 +127,18 @@ if [ -n "$APK_ADD" ]; then
 	_apkAdd "$APK_ADD"
 fi
 
+
 printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄⚟ Initialising ⚞┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
 
 _initTZ
+
+if [ -n "$PUID" ]; then
+	usermod --non-unique --uid "$PUID" "$User"
+fi
+
+if [ -n "$PGID" ]; then
+	groupmod --non-unique --gid "$PGID" "$Group"
+fi
 
 if [ ! -d "$confDir" ]; then
 	printf 'Folder "%s" does not exist and is therefore created\n' "$confDir"
@@ -164,6 +173,8 @@ fi
 
 
 printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄⚟ Prepare ⚞┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
+
+$runUser nvchecker --file "$confFile" --tries 1
 
 if nvcmp --file "$confFile" | grep -qi none; then
 	mapfile -t nameARR < <( nvcmp --file "$confFile" | grep -i none | cut -d ' ' -f 1 )

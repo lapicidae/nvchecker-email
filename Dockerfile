@@ -18,14 +18,15 @@ COPY root/ /
 RUN echo "**** install runtime packages ****" && \
     apk add --no-cache --upgrade \
       bash \
+      git \
+      gzip \
       nvchecker \
       py3-awesomeversion \
       py3-lxml \
       py3-packaging \
       py3-toml \
-      gzip \
-      git \
       runuser \
+      shadow \
       tini \
       tzdata \
       yq && \
@@ -34,6 +35,7 @@ RUN echo "**** install runtime packages ****" && \
     echo $TZ >/etc/timezone && \
     echo "********* set permissions ********" && \
     chmod 755 /usr/local/bin/cron-human && \
+    chmod 755 /usr/local/bin/cron_run && \
     chmod 755 /usr/local/bin/docker-entrypoint.sh && \
     chmod 755 /usr/local/bin/nvchecker-email && \
     echo "************ link files **********" && \
