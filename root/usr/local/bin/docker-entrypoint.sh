@@ -132,11 +132,11 @@ printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄�
 
 _initTZ
 
-if [ -n "$PUID" ]; then
+if [ -n "$PUID" ] && [ "$PUID" != "$(id -u "$User")" ]; then
 	usermod --non-unique --uid "$PUID" "$User"
 fi
 
-if [ -n "$PGID" ]; then
+if [ -n "$PGID" ] && [ "$PGID" != "$(id -g "$Group")" ]; then
 	groupmod --non-unique --gid "$PGID" "$Group"
 fi
 
@@ -163,7 +163,7 @@ oldverFile=$(yq '.__config__.oldver' "$confFile")
 
 if [ ! -e "$newverFile" ]; then
 	printf 'File "%s" missing execute "nvchecker"\n' "$newverFile"
-	$runUser nvchecker --file "$confFile" --logging error
+	$runUser nvchecker --file "$confFile" --tries 1 --logging error
 fi
 
 if [ ! -e "$oldverFile" ]; then
@@ -174,13 +174,12 @@ fi
 
 printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄⚟ Prepare ⚞┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
 
-$runUser nvchecker --file "$confFile" --tries 1
+$runUser nvchecker --file "$confFile" --tries 1 --logging error
 
 if nvcmp --file "$confFile" | grep -qi none; then
 	mapfile -t nameARR < <( nvcmp --file "$confFile" | grep -i none | cut -d ' ' -f 1 )
-	printf 'Update version records of:\n'
 	for n in "${nameARR[@]}"; do
-		printf '> %s\n' "$n"
+		printf  '%s: update version records' "$n"
 		$runUser nvtake --file "$confFile" "$n"
 	done
 fi
