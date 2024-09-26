@@ -1,4 +1,4 @@
-[![nvchecker-email](nvchecker-email-logo.svg){:height="210px"}](https://github.com/lapicidae/nvchecker-email)
+[![nvchecker-email](nvchecker-email-logo.svg)](https://github.com/lapicidae/nvchecker-email)
 
 new version checker (nvchecker) checks whether a new version of a software has been released and then notifies you by e-mail.
 
