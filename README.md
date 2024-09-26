@@ -1,4 +1,4 @@
-[![nvchecker-email](nvchecker-email-logo.svg)](https://github.com/lapicidae/nvchecker-email)
+[![nvchecker-email](nvchecker-email-logo.svg){:height="210px"}](https://github.com/lapicidae/nvchecker-email)
 
 new version checker (nvchecker) checks whether a new version of a software has been released and then notifies you by e-mail.
 
@@ -85,7 +85,30 @@ In this instance `PUID=1234` and `PGID=4321`, to find yours use `id user` as bel
 ```
 
 ## Configuration
-Please read the [documentation](https://nvchecker.readthedocs.io/) for nvchecker.
+
+### nvchecker
+The software version source file ***/nvchecker/nvchecker.toml*** is in toml format. The key name is the name of the software. Following fields are used to tell nvchecker how to determine the current version of that software.  
+See [sample_source.toml](https://github.com/lilydjwg/nvchecker/blob/master/sample_config.toml) for an example.  
+For more information, please read the [documentation](https://nvchecker.readthedocs.io/en/latest/usage.html#configuration-files).
+
+### e-mail
+The e-mail functionality is realised by the Python module [smtplib](https://docs.python.org/3/library/smtplib.html). The e-mail settings are configured centrally in the file ***/nvchecker/email.toml***.
+
+#### *Gmail Example*
+```toml
+[SMTP]
+host = 'smtp.gmail.com'
+port = 587
+starttls = true
+
+[AUTH]
+user = 'firstname.lastname@gmail.com'
+password = 'pAsSwOrD'                           # use https://myaccount.google.com/lesssecureapps
+
+[ADDR]
+from = 'firstname.lastname@gmail.com'
+to = 'firstname.lastname+nvchecker@gmail.com'   # you can append a plus ("+") sign and any combination of words or numbers after your email address.
+```
 
 ## Note
 Take a look at [crontab guru](https://crontab.guru/) for help with for cron schedule expression.
