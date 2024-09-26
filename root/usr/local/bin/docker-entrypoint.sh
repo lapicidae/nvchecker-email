@@ -139,12 +139,12 @@ printf '\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄�
 _initTZ
 
 if [ -n "$PUID" ] && [ "$PUID" != "$(id -u "$User")" ]; then
-	printf 'ID of user %s changed to %s\n' "$User" "$PUID"
+	printf 'Change ID of user %s to %s\n' "$User" "$PUID"
 	usermod --non-unique --uid "$PUID" "$User"
 fi
 
 if [ -n "$PGID" ] && [ "$PGID" != "$(id -g "$Group")" ]; then
-	printf 'ID of Group %s changed to %s\n' "$Group" "$PGID"
+	printf 'Change ID of group %s to %s\n' "$Group" "$PGID"
 	groupmod --non-unique --gid "$PGID" "$Group"
 fi
 
