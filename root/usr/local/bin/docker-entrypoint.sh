@@ -7,6 +7,7 @@ confFile="${confDir}/nvchecker.toml"
 confEmail="${confDir}/email.toml"
 User=${USERNAME:-"nvchk"}
 Group=${GROUPNAME:-"nvchk"}
+CRON_SCHEDULE=${CRON_SCHEDULE:-"0 1 * * *"}
 
 
 ## Alias
