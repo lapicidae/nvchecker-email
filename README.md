@@ -94,11 +94,12 @@ For more information, please read the [documentation](https://nvchecker.readthed
 ### e-mail
 The e-mail functionality is realised by the Python module [smtplib](https://docs.python.org/3/library/smtplib.html). The e-mail settings are configured centrally in the file ***/nvchecker/email.toml***.
 
-#### *Gmail Example*
+#### *Gmail Example (STARTTLS)*
 ```toml
 [SMTP]
 host = 'smtp.gmail.com'
 port = 587
+ssl = false
 starttls = true
 
 [AUTH]
