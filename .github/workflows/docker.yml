@@ -4,6 +4,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - .gitignore
       - README.md
       - nvchecker-email-logo.svg
       - Jenkinsfile
