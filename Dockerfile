@@ -41,6 +41,8 @@ RUN echo "**** install runtime packages ****" && \
     chmod 755 /usr/local/bin/nvchecker-email && \
     echo "************ link files **********" && \
     ln -s /usr/local/bin/docker-entrypoint.sh /docker-entrypoint && \
+    mkdir -p /root/.config && \
+    ln -s /nvchecker /root/.config/nvchecker && \
     echo "******* add group and user *******" && \
     addgroup -g $PGID $GROUPNAME && \
     adduser -D -G $GROUPNAME -u $PUID -h /nvchecker $USERNAME && \

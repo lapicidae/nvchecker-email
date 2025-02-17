@@ -3,8 +3,10 @@
 
 ## Config
 confDir='/nvchecker'
+confDirLink="${confDir}/.config/nvchecker"
 confFile="${confDir}/nvchecker.toml"
 confEmail="${confDir}/email.toml"
+
 User=${USERNAME:-"nvchk"}
 Group=${GROUPNAME:-"nvchk"}
 CRON_SCHEDULE=${CRON_SCHEDULE:-"0 1 * * *"}
@@ -152,6 +154,18 @@ fi
 if [ ! -d "$confDir" ]; then
 	printf 'Folder "%s" does not exist and is therefore created\n' "$confDir"
 	mkdir -p "$confDir"
+fi
+
+if [ ! -L "$confDirLink" ]; then
+	printf 'Link "%s" => "%s" does not exist and is therefore created\n' "$confDirLink" "$confDir"
+	if [ ! -d $confDirLink ] && [ ! -f $confDirLink ]; then
+		mkdir -p $confDir/.config
+		ln -s $confDir $confDir/.config/nvchecker
+	else
+		printf 'ERROR: "%s" already exists, but is not a link to "%s"\n' "$confDirLink" "$confDir"
+	fi
+elif [ "$(readlink $confDirLink)" != "$confDir" ]; then
+	printf 'ERROR: "%s" already exists, but it is a link to "%s"\n' "$confDirLink" "$(readlink $confDirLink)"
 fi
 
 if [ ! -e "$confFile" ]; then
