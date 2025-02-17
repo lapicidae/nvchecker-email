@@ -3,9 +3,9 @@
 newver = "new_ver.json"
 oldver = "old_ver.json"
 
-[PySide]
+[Troubadix]
 source = "pypi"
-pypi = "PySide"
+pypi = "troubadix"
 
 [fbcat]
 source = "aur"
@@ -26,9 +26,5 @@ github = "lilydjwg/nvchecker"
 
 [ssed]
 source = "regex"
-regex = "The current version is ([\\d.]+)\\."
+regex = 'sed-(\d+\.\d+)\.tar.gz'
 url = "http://sed.sourceforge.net/grabbag/ssed/"
-
-[winterpy]
-source = "github"
-github = "lilydjwg/winterpy"
