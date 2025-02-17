@@ -94,12 +94,28 @@ For more information, please read the [documentation](https://nvchecker.readthed
 ### e-mail
 The e-mail functionality is realised by the Python module [smtplib](https://docs.python.org/3/library/smtplib.html). The e-mail settings are configured centrally in the file ***/nvchecker/email.toml***.
 
+#### *Options*
+|Value     |Default|Description                              |
+|----------|-------|-----------------------------------------|
+|**[SMTP]**|       |                                         |
+|host      |       |Domain name of SMTP service              |
+|port      |25     |If port is zero, the default port is used|
+|ssl       |false  |Secured by SSL or TLS (default port 465) |
+|starttls  |false  |Opportunistic TLS (default port 25)      |
+|timeout   |15     |Timeout in seconds                       |
+|**[AUTH]**|       |                                         |
+|user      |       |User name                                |
+|password  |       |Password                                 |
+|**[ADDR]**|       |                                         |
+|from      |       |E-mail address of the sender             |
+|to        |       |E-mail address of the recipient          |
+
+
 #### *Gmail Example (STARTTLS)*
 ```toml
 [SMTP]
 host = 'smtp.gmail.com'
 port = 587
-ssl = false
 starttls = true
 
 [AUTH]
@@ -109,6 +125,17 @@ password = 'pAsSwOrD'                           # use https://myaccount.google.c
 [ADDR]
 from = 'firstname.lastname@gmail.com'
 to = 'firstname.lastname+nvchecker@gmail.com'   # you can append a plus ("+") sign and any combination of words or numbers after your email address.
+```
+
+#### *Configuration test*
+Send an e-mail to test your configuration.
+```bash
+## already running container
+# docker exec -it [container-name] nvchecker-email --testmail
+docker exec -it nvchecker-email nvchecker-email --testmail
+
+# start new container
+docker run -it --rm -v "/path/to/config:/nvchecker" ghcr.io/lapicidae/nvchecker-email:latest /bin/bash -c 'nvchecker-email --testmail'
 ```
 
 ## Note

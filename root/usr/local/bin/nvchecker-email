@@ -11,25 +11,60 @@ A simple wrapper to send email notifications while running nvchecker.
 import os
 import subprocess
 import json
-
+import traceback
 from typing import TYPE_CHECKING
 
 import platformdirs
 
+# Logging
+import logging
+
+logging.basicConfig(
+    level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 def get_default_config() -> str:
+    """
+    Retrieve the default configuration file path for nvchecker.
+
+    This function constructs the default path for the nvchecker configuration
+    file using the user configuration directory provided by platformdirs.
+
+    Returns:
+        str: The path to the default nvchecker configuration file.
+    """
     confdir = platformdirs.user_config_dir(appname="nvchecker")
     file = os.path.join(confdir, "nvchecker.toml")
     return file
 
 
 def get_default_emailconf() -> str:
+    """
+    Retrieve the default email configuration file path.
+
+    This function constructs the default path for the email configuration
+    file using the user configuration directory provided by platformdirs.
+
+    Returns:
+        str: The path to the default email configuration file.
+    """
     confdir = platformdirs.user_config_dir(appname="nvchecker")
     file = os.path.join(confdir, "email.toml")
     return file
 
 
 def get_args():
+    """
+    Parse and return command-line arguments.
+
+    Uses argparse to parse command-line options and arguments relevant to the
+    nvchecker notification wrapper.
+
+    Returns:
+        argparse.Namespace: The parsed command-line arguments.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -78,13 +113,31 @@ def get_args():
         action="store_true",
         help="exit with code 3 if failures / errors happen during checking",
     )
+    parser.add_argument(
+        "--testmail",
+        action="store_true",
+        help="send a test email, no more and no less",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="show the traceback in case of error"
+    )
 
     return parser.parse_args()
 
 
 def send_mail(*input):
-    # print('send email...')
+    """
+    Send an email with the provided content.
 
+    The email configuration is loaded from a TOML file specified via command-line
+    arguments. The email message is constructed with an ASCII art header and a
+    timestamp. Various SMTP and network errors are caught and logged appropriately.
+
+    Args:
+        *input: Variable length argument list representing parts of the email content.
+    """
     if TYPE_CHECKING:
         import tomli as tomllib
     else:
@@ -95,8 +148,9 @@ def send_mail(*input):
 
     import datetime
     import smtplib
+    import socket
 
-    # read args
+    # Read email configuration from file
     args = get_args()
     mailConf = args.emailfile
 
@@ -107,26 +161,26 @@ def send_mail(*input):
             smtp_port = config.get("SMTP", {}).get("port", 25)
             smtp_ssl = config.get("SMTP", {}).get("ssl", False)
             smtp_starttls = config.get("SMTP", {}).get("starttls", False)
+            smtp_timeout = config.get("smtp", {}).get("timeout", 15)
             auth_user = config.get("AUTH", {}).get("user", "user@example.com")
             auth_password = config.get("AUTH", {}).get("password", "PaSsWoRd")
             addr_from = config.get("ADDR", {}).get("from", "sender@example.com")
             addr_to = config.get("ADDR", {}).get("to", "receiver@example.com")
     except tomllib.TOMLDecodeError as e:
-        print(e.args[0])
+        logger.error(f"Error loading email configuration: {e}")
+        logger.debug(traceback.format_exc())
         if args.failures:
             exit(3)
         else:
             exit(1)
 
-    # check config
+    # Check configuration consistency
     if smtp_ssl and smtp_starttls is True:
-        import warnings
-        warnings.warn('ssl and starttls are set to true, ssl is preferred', SyntaxWarning) 
+        logger.warning("ssl and starttls are both set to true, ssl is preferred")
 
-    # current date and time
+    # Construct email content with ASCII art header and timestamp
     now_dateTime = datetime.datetime.now().strftime("%c")
 
-    ## Email content
     headart = []
     headart.append("                _               _")
     headart.append("               | |             | |")
@@ -138,20 +192,23 @@ def send_mail(*input):
 
     content = "\n".join(headart) + now_dateTime + "\n" + "".join(str(i) for i in input)
 
-    # Set up SMTP connection to SMTP server
-    if smtp_ssl is True:
-        mail = smtplib.SMTP_SSL(smtp_host, smtp_port)
-    else:
-        mail = smtplib.SMTP(smtp_host, smtp_port)
+    mail = None
 
     try:
+        # Set up SMTP connection to SMTP server
+        if smtp_ssl is True:
+            mail = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout)
+        else:
+            mail = smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout)
+
         # Identify yourself to the SMTP server
         mail.ehlo()
-        # Start TLS encryption for the connection
+
+        # Start TLS encryption if configured and not already using SSL
         if smtp_starttls is True and smtp_ssl is not True:
             mail.starttls()
 
-        # Login to SMTP server
+        # Authenticate with the SMTP server
         mail.login(auth_user, auth_password)
 
         # Email details
@@ -161,82 +218,148 @@ def send_mail(*input):
         header = f"To: {addr_to}\nFrom: {addr_from}\nSubject: {subject}\n\n"
         content = header + content
 
-        # Send email
+        # Send the email
         mail.sendmail(addr_from, addr_to, content)
 
-    except Exception as e:
-        print("Error: ", str(e))
+    except (
+        smtplib.SMTPConnectError,
+        socket.gaierror,
+        OSError,
+    ) as e:  # Catch connection errors
+        logger.error(f"Connection error: {e}")
+        logger.debug(traceback.format_exc())
+
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP Authentication Error: {e}")
+        logger.debug(traceback.format_exc())
+    except smtplib.SMTPServerDisconnected as e:
+        logger.error(f"SMTP Server Disconnected: {e}")
+        logger.debug(traceback.format_exc())
+    except smtplib.SMTPException as e:  # Catch other SMTP errors
+        logger.error(f"SMTP Error: {e}")
+        logger.debug(traceback.format_exc())
+    except Exception as e:  # Catch all other exceptions
+        logger.error(f"Email Error: {e}")
+        logger.debug(traceback.format_exc())
         if args.failures:
             exit(3)
         else:
             exit(1)
 
     finally:
-        # Close SMTP connection
-        mail.quit()
-        # print('\tsuccessful')
+        if mail:  # Close connection only if it was established
+            mail.quit()
 
 
 def main():
+    """
+    Execute the main program logic.
+
+    This function parses command-line arguments, runs the nvchecker tool to check for
+    updates, processes its output, and sends email notifications if updates are found
+    or if a test email is requested. Additionally, it optionally marks all versions as
+    updated using the nvtake command.
+    """
     args = get_args()
+
+    # Activate debug mode if requested by command-line or environment variable
+    debug_mode_env = os.environ.get("DEBUG")
+    if args.debug or debug_mode_env:
+        logger.setLevel(logging.DEBUG)
 
     updates = []
 
-    rfd, wfd = os.pipe()
-    cmd = [
-        "nvchecker",
-        "--logger",
-        "both",
-        "--json-log-fd",
-        str(wfd),
-    ]
-    if args.file:
-        cmd.extend(["-c", args.file])
-    if args.keyfile:
-        cmd.extend(["-k", args.keyfile])
-    if args.tries:
-        cmd.extend(["-t", str(args.tries)])
-    if args.failures:
-        cmd.append("--failures")
+    if not args.testmail:
+        try:
+            rfd, wfd = os.pipe()
+            cmd = [
+                "nvchecker",
+                "--logger",
+                "both",
+                "--json-log-fd",
+                str(wfd),
+            ]
+            if args.file:
+                cmd.extend(["-c", args.file])
+            if args.keyfile:
+                cmd.extend(["-k", args.keyfile])
+            if args.tries:
+                cmd.extend(["-t", str(args.tries)])
+            if args.failures:
+                cmd.append("--failures")
 
-    process = subprocess.Popen(cmd, pass_fds=(wfd,))
-    os.close(wfd)
+            process = subprocess.Popen(cmd, pass_fds=(wfd,))
+            os.close(wfd)
 
-    output = os.fdopen(rfd)
-    for o in output:
-        j = json.loads(o)
-        event = j["event"]
-        if event == "updated":
-            # updates.append("%(name)s updated to version %(version)s" % j)
-            updates.append("%(name)s: updated from %(old_version)s to %(version)s" % j)
+            output = os.fdopen(rfd)
+            for o in output:
+                j = json.loads(o)
+                event = j["event"]
+                if event == "updated":
+                    # updates.append("%(name)s updated to version %(version)s" % j)
+                    updates.append(
+                        "%(name)s: updated from %(old_version)s to %(version)s" % j
+                    )
 
-    ret = process.wait()
-    if ret != 0:
-        raise subprocess.CalledProcessError(ret, cmd)
+            ret = process.wait()
+            if ret != 0:
+                raise subprocess.CalledProcessError(ret, cmd)
 
-    if updates:
-        # print("nvchecker:")
-        # for p in updates:
-        #     print("\t" + p)
-        send_mail("\n".join(updates))
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running nvchecker: {e}")
+            logger.error(f"Command: {e.cmd}")
+            logger.error(f"Return code: {e.returncode}")
+            logger.debug(traceback.format_exc())
+            if args.failures:
+                exit(3)
+            else:
+                exit(1)
+            return
 
-    if args.update:
-        rfd, wfd = os.pipe()
-        cmd_take = [
-            "nvtake",
-            "--logger",
-            "both",
-            "--json-log-fd",
-            str(wfd),
-            "--all"
-        ]
-        if args.file:
-            cmd_take.extend(["--file", args.file])
-        process_take = subprocess.Popen(cmd_take, pass_fds=(wfd,))
-        os.close(wfd)
-        ret_take = process_take.wait()
-        if ret_take != 0:
-            raise subprocess.CalledProcessError(ret_take, cmd_take)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON: {e}")
+            logger.debug(traceback.format_exc())
+            if args.failures:
+                exit(3)
+            else:
+                exit(1)
+            return
+
+        if updates:
+            send_mail("\n".join(updates))
+
+        if args.update:
+            try:
+                rfd, wfd = os.pipe()
+                cmd_take = [
+                    "nvtake",
+                    "--logger",
+                    "both",
+                    "--json-log-fd",
+                    str(wfd),
+                    "--all",
+                ]
+                if args.file:
+                    cmd_take.extend(["--file", args.file])
+                process_take = subprocess.Popen(cmd_take, pass_fds=(wfd,))
+                os.close(wfd)
+                ret_take = process_take.wait()
+                if ret_take != 0:
+                    raise subprocess.CalledProcessError(ret_take, cmd_take)
+
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error running nvtake: {e}")
+                logger.error(f"Command: {e.cmd}")
+                logger.error(f"Return code: {e.returncode}")
+                logger.debug(traceback.format_exc())
+                if args.failures:
+                    exit(3)
+                else:
+                    exit(1)
+                return
+
+    else:
+        send_mail("\nTest fast, fail fast, adjust fast.\nTom Peters")
 
 
 if __name__ == "__main__":
