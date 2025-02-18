@@ -161,7 +161,7 @@ def send_mail(*input):
             smtp_port = config.get("SMTP", {}).get("port", 25)
             smtp_ssl = config.get("SMTP", {}).get("ssl", False)
             smtp_starttls = config.get("SMTP", {}).get("starttls", False)
-            smtp_timeout = config.get("smtp", {}).get("timeout", 15)
+            smtp_timeout = config.get("SMTP", {}).get("timeout", 15)
             auth_user = config.get("AUTH", {}).get("user", "user@example.com")
             auth_password = config.get("AUTH", {}).get("password", "PaSsWoRd")
             addr_from = config.get("ADDR", {}).get("from", "sender@example.com")
