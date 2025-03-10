@@ -1,29 +1,289 @@
-#!/bin/sh
+#!/usr/bin/env python3
+
+import argparse
+import datetime
+import getpass
+import inspect
+import json
+import logging
+import os
+import platformdirs
+import shutil
+import subprocess
+import traceback
+import zlib
+from pathlib import Path
+
+# Constants for commands and paths
+NV_CHECKER_CMD = "nvchecker"
+NVCMP_CMD = "nvcmp"
+NVTACK_CMD = "nvtake"
+DEV_SHM_DIR = Path("/dev/shm")
+TMP_DIR = Path("/tmp")
 
 
-confFile="$HOME/nvchecker.toml"
-NVCHECKER_CONF_MD5='/dev/shm/NVCHECKER_CONF_MD5'
-confMD5=$(md5sum "$confFile" | cut -d ' ' -f 1 | tr -d '\n')
+# Custom exception for specific error cases
+class NvcheckerException(Exception):
+    pass
 
 
-if [ ! -s "$NVCHECKER_CONF_MD5" ]; then     # file exists and is not empty
-	echo "$confMD5" > "$NVCHECKER_CONF_MD5"
+class SourceFileAndLineFormatter(logging.Formatter):
+    """
+    Formatter that includes the source file, line number, script name, and PID
+    to facilitate debugging.
+    """
 
-elif [ -r "$NVCHECKER_CONF_MD5" ]; then
-	oldMD5=$(< "$NVCHECKER_CONF_MD5" tr -d '\n')
-	newMD5="$confMD5"
-	if [ "$oldMD5" != "$newMD5" ]; then
-		echo 'Config file Changed'
-		nvchecker --file "$confFile" --tries 1 --logging error
+    def format(self, record):
+        # When DEBUG level is enabled, determine the file and line number dynamically
+        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
+            frame = inspect.currentframe().f_back
+            record.filename = os.path.basename(
+                os.path.abspath(frame.f_code.co_filename)
+            )
+            record.lineno = frame.f_lineno
+            pid = os.getpid()
+            log_level = record.levelname[0]
+            timestamp = datetime.datetime.fromtimestamp(record.created).strftime(
+                "%m-%d %H:%M:%S.%f"
+            )[:-3]
+            return f"[{log_level} {timestamp} {record.filename}:{pid}] {record.getMessage()}"
+        else:
+            script_name = os.path.basename(__file__)
+            pid = os.getpid()
+            log_level = record.levelname[0]
+            timestamp = datetime.datetime.fromtimestamp(record.created).strftime(
+                "%m-%d %H:%M:%S.%f"
+            )[:-3]
+            return (
+                f"[{log_level} {timestamp} {script_name}:{pid}] {record.getMessage()}"
+            )
 
-		if nvcmp --file "$confFile" | grep -qi none; then
-			set -- "$(nvcmp --file "$confFile" | grep -i none | cut -d ' ' -f 1)"
-			for name in "$@"; do
-				echo "$name: update version records"
-				nvtake --file "$confFile" "$name"
-			done
-		fi
 
-        echo "$newMD5" > "$NVCHECKER_CONF_MD5"
-    fi
-fi
+# Logging setup
+formatter = SourceFileAndLineFormatter()
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+
+def get_default_config() -> Path:
+    """
+    Returns the default path for the nvchecker configuration file.
+    """
+    confdir = platformdirs.user_config_dir(appname="nvchecker")
+    return Path(confdir) / "nvchecker.toml"
+
+
+def get_args():
+    """
+    Parses and returns the command-line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description="Monitor the nvchecker configuration file for changes"
+    )
+    default_config = get_default_config()
+    parser.add_argument(
+        "-c",
+        "--file",
+        metavar="FILE",
+        type=str,
+        default=str(default_config),
+        help=f"Software version configuration file [default: {default_config}]",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Display traceback on errors"
+    )
+    return parser.parse_args()
+
+
+def run_command(command: list) -> tuple[str, int]:
+    """
+    Executes a command and returns a tuple (stdout, return_code).
+    Logs a detailed error message if an error occurs.
+    """
+    try:
+        logger.debug(f"Executing command: {' '.join(command)}")
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        return result.stdout.strip(), 0
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {' '.join(command)}; Error: {e}")
+        return e.stderr.strip(), e.returncode
+    except FileNotFoundError as e:
+        logger.error(f"Command not found: {e.filename}")
+        return f"Error: {e.filename} not found", 1
+
+
+def read_checksum_file(checksum_file: Path) -> str:
+    """
+    Reads the contents of the Checksum file if it exists.
+    Returns an empty string if the file does not exist or is empty.
+    """
+    if not checksum_file.exists() or checksum_file.stat().st_size == 0:
+        return ""
+    return checksum_file.read_text().strip()
+
+
+def write_checksum_file(checksum_file: Path, checksum_str: str) -> None:
+    """
+    Writes the provided Checksum checksum to the Checksum file.
+    """
+    checksum_file.write_text(checksum_str)
+    logger.debug(f"Checksum file written: {checksum_file} with checksum {checksum_str}")
+
+
+def calculate_adler32(conf_file: Path) -> str:
+    """
+    Calculates the Adler-32 checksum of the configuration file.
+    """
+    logger.debug(f"Calculating Adler-32 for file: {conf_file}")
+    try:
+        content = conf_file.read_bytes()
+        # Adler32 returns an integer, convert it to a hexadecimal string for consistency
+        return format(zlib.adler32(content) & 0xFFFFFFFF, "08x")
+    except FileNotFoundError:
+        msg = f"Configuration file {conf_file} not found"
+        logger.error(msg)
+        raise NvcheckerException(msg)
+
+
+def run_nvchecker(conf_file: Path) -> None:
+    """
+    Executes nvchecker and processes its JSON logging output.
+    Logs detailed error messages if errors occur.
+    """
+    try:
+        rfd, wfd = os.pipe()
+        cmd = [
+            NV_CHECKER_CMD,
+            "--logger",
+            "both",
+            "--json-log-fd",
+            str(wfd),
+            "--file",
+            str(conf_file),
+            "--tries",
+            "1",
+            "--failures",
+        ]
+        logger.debug(f"Running nvchecker: {' '.join(cmd)}")
+        process = subprocess.Popen(cmd, pass_fds=(wfd,))
+        os.close(wfd)
+
+        with os.fdopen(rfd) as output:
+            for line in output:
+                try:
+                    j = json.loads(line)
+                    event = j.get("event", "")
+                    if event == "error":
+                        logger.error(f"nvchecker error: {j.get('message')}")
+                    elif event == "updated":
+                        logger.debug(
+                            f"{j.get('name')}: updated from {j.get('old_version')} to {j.get('version')}"
+                        )
+                except json.JSONDecodeError:
+                    logger.debug("Invalid JSON, skipping line")
+        ret = process.wait()
+        if ret != 0:
+            msg = f"nvchecker exited with return code {ret}"
+            logger.error(msg)
+            raise NvcheckerException(msg)
+    except subprocess.CalledProcessError as e:
+        msg = f"nvchecker execution failed: {' '.join(cmd)}; Error: {e}"
+        logger.error(msg)
+        logger.debug(traceback.format_exc())
+        raise NvcheckerException(msg) from e
+    except Exception as e:
+        msg = f"Unexpected error in nvchecker: {e}"
+        logger.error(msg)
+        logger.debug(traceback.format_exc())
+        raise NvcheckerException(msg) from e
+
+
+def run_nvcmp(conf_file: Path) -> str:
+    """
+    Executes nvcmp and returns its output.
+    """
+    cmd = [NVCMP_CMD, "--file", str(conf_file)]
+    logger.debug(f"Running nvcmp: {' '.join(cmd)}")
+    output, return_code = run_command(cmd)
+    if return_code != 0:
+        msg = f"nvcmp execution failed: {' '.join(cmd)}; Output: {output}"
+        logger.error(msg)
+        raise NvcheckerException(msg)
+    return output
+
+
+def process_nvtake_updates(conf_file: Path, nvcmp_output: str) -> None:
+    """
+    Processes the output from nvcmp. If the string "none" is detected,
+    nvtake is called for the corresponding names.
+    """
+    if "none" in nvcmp_output.lower():
+        for line in nvcmp_output.splitlines():
+            if "none" in line.lower():
+                name = line.split()[0]
+                logger.info(f"{name}: update version records")
+                cmd = [NVTACK_CMD, "--file", str(conf_file), name]
+                logger.debug(f"Running nvtake: {' '.join(cmd)}")
+                output, return_code = run_command(cmd)
+                if return_code != 0:
+                    logger.error(f"nvtake call for {name} failed. Output: {output}")
+
+
+def main():
+    args = get_args()
+
+    # Activate debug mode if requested by command-line or environment variable
+    debug_env = os.environ.get("DEBUG")
+    if args.debug or (debug_env and debug_env.lower() in ("true", "1", "yes")):
+        logger.setLevel(logging.DEBUG)
+
+    conf_file = Path(os.path.expanduser(args.file))
+    user = getpass.getuser()
+
+    # Determine the path for the Checksum file: prefer /dev/shm, fallback to /tmp if not available
+    if DEV_SHM_DIR.is_dir():
+        checksum_file = DEV_SHM_DIR / f"NVCHECKER_CONF_CHECKSUM_{user}"
+    else:
+        checksum_file = TMP_DIR / f"NVCHECKER_CONF_CHECKSUM_{user}"
+        logger.warning(f"/dev/shm not available, using {checksum_file} as fallback")
+
+    # Check if nvchecker and nvcmp are installed by verifying they are in the PATH
+    if shutil.which(NV_CHECKER_CMD) is None or shutil.which(NVCMP_CMD) is None:
+        logger.error(
+            f"At least one of the commands ({NV_CHECKER_CMD}, {NVCMP_CMD}) is not available in PATH."
+        )
+        exit(1)
+
+    try:
+        conf_checksum = calculate_adler32(conf_file)
+    except NvcheckerException:
+        exit(1)
+
+    old_checksum = read_checksum_file(checksum_file)
+    if not old_checksum:
+        write_checksum_file(checksum_file, conf_checksum)
+        logger.debug(f"Checksum file created: {checksum_file}")
+    elif old_checksum != conf_checksum:
+        logger.info("Configuration file has changed")
+        try:
+            run_nvchecker(conf_file)
+        except NvcheckerException as e:
+            logger.error(e)
+            exit(1)
+        try:
+            nvcmp_output = run_nvcmp(conf_file)
+        except NvcheckerException as e:
+            logger.error(e)
+            exit(1)
+        process_nvtake_updates(conf_file, nvcmp_output)
+        write_checksum_file(checksum_file, conf_checksum)
+        logger.debug(f"Checksum file updated: {checksum_file}")
+    else:
+        logger.debug("Configuration file unchanged")
+
+
+if __name__ == "__main__":
+    main()
