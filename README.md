@@ -69,7 +69,8 @@ Container images are configured using parameters passed at runtime.
 | `-e NVCHECKER_UPDATE=false` | true | Mark all versions as updated after successfully sending the e-mail (nvtake --all) |
 | `-e CRON_SCHEDULE='0 6 * * *'` | '0 1 * * *' | crontab schedule ([examples](https://crontab.guru/)) |
 | `-e APK_ADD=’7zip,curl,httpie’` | --- | **Comma-separated** list of additional [packages](https://pkgs.alpinelinux.org/) to be installed  |
-| `-e CRON_HUMAN=false` | true | deactivate the human-readable output of the crontab schedule at the beginning of the log |
+| `-e CRON_HUMAN=false` | true | De/activate the human-readable output of the crontab schedule at the beginning of the log |
+| `-e DEBUG=true` | false | Verbose debug logging for troubleshooting |
 | `-v /nvchecker` | | Configuration files directory |
 
 ### User / Group Identifiers
@@ -140,4 +141,3 @@ docker run -it --rm -v "/path/to/config:/nvchecker" ghcr.io/lapicidae/nvchecker-
 
 ## Note
 Take a look at [crontab guru](https://crontab.guru/) for help with for cron schedule expression.
-

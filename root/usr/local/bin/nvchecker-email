@@ -37,6 +37,7 @@ def get_default_config() -> str:
     """
     confdir = platformdirs.user_config_dir(appname="nvchecker")
     file = os.path.join(confdir, "nvchecker.toml")
+    logger.debug(f"Default config file path: {file}")
     return file
 
 
@@ -52,6 +53,7 @@ def get_default_emailconf() -> str:
     """
     confdir = platformdirs.user_config_dir(appname="nvchecker")
     file = os.path.join(confdir, "email.toml")
+    logger.debug(f"Default email config file path: {file}")
     return file
 
 
@@ -119,15 +121,15 @@ def get_args():
         help="send a test email, no more and no less",
     )
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="show the traceback in case of error"
+        "--debug", action="store_true", help="show the traceback in case of error"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    logger.debug(f"Parsed arguments: {args}")
+    return args
 
 
-def send_mail(*input):
+def send_mail(*message):
     """
     Send an email with the provided content.
 
@@ -136,7 +138,7 @@ def send_mail(*input):
     timestamp. Various SMTP and network errors are caught and logged appropriately.
 
     Args:
-        *input: Variable length argument list representing parts of the email content.
+        *message: Variable length argument list representing parts of the email content.
     """
     if TYPE_CHECKING:
         import tomli as tomllib
@@ -153,6 +155,7 @@ def send_mail(*input):
     # Read email configuration from file
     args = get_args()
     mailConf = args.emailfile
+    logger.debug(f"Loading email config from: {mailConf}")
 
     try:
         with open(mailConf, "rb") as f:
@@ -166,6 +169,9 @@ def send_mail(*input):
             auth_password = config.get("AUTH", {}).get("password", "PaSsWoRd")
             addr_from = config.get("ADDR", {}).get("from", "sender@example.com")
             addr_to = config.get("ADDR", {}).get("to", "receiver@example.com")
+            logger.debug(
+                f"Email config loaded: SMTP={smtp_host}:{smtp_port}, SSL={smtp_ssl}, StartTLS={smtp_starttls}, Auth={auth_user}"
+            )
     except tomllib.TOMLDecodeError as e:
         logger.error(f"Error loading email configuration: {e}")
         logger.debug(traceback.format_exc())
@@ -190,12 +196,13 @@ def send_mail(*input):
     headart.append("|_| |_|\\_/ \\___|_| |_|\\___|\\___|_|\\_\\___|_|")
     headart.append("\n")
 
-    content = "\n".join(headart) + now_dateTime + "\n" + "".join(str(i) for i in input)
+    content = "\n".join(headart) + now_dateTime + "\n" + "".join(str(i) for i in message)
 
     mail = None
 
     try:
         # Set up SMTP connection to SMTP server
+        logger.debug(f"Attempting to connect to SMTP server: {smtp_host}:{smtp_port}")
         if smtp_ssl is True:
             mail = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout)
         else:
@@ -203,13 +210,16 @@ def send_mail(*input):
 
         # Identify yourself to the SMTP server
         mail.ehlo()
+        logger.debug("SMTP EHLO successful.")
 
         # Start TLS encryption if configured and not already using SSL
         if smtp_starttls is True and smtp_ssl is not True:
             mail.starttls()
+            logger.debug("SMTP StartTLS successful.")
 
         # Authenticate with the SMTP server
         mail.login(auth_user, auth_password)
+        logger.debug("SMTP login successful.")
 
         # Email details
         subject = f"nvchecker [{now_dateTime}]"
@@ -219,7 +229,9 @@ def send_mail(*input):
         content = header + content
 
         # Send the email
+        logger.debug(f"Sending email to: {addr_to}")
         mail.sendmail(addr_from, addr_to, content)
+        logger.debug("Email sent successfully.")
 
     except (
         smtplib.SMTPConnectError,
@@ -249,6 +261,7 @@ def send_mail(*input):
     finally:
         if mail:  # Close connection only if it was established
             mail.quit()
+            logger.debug("SMTP connection closed.")
 
 
 def main():
@@ -260,18 +273,27 @@ def main():
     or if a test email is requested. Additionally, it optionally marks all versions as
     updated using the nvtake command.
     """
+    logger.debug("Starting main function execution.")
     args = get_args()
+    logger.debug("Command-line arguments have been parsed.")
 
     # Activate debug mode if requested by command-line or environment variable
-    debug_mode_env = os.environ.get("DEBUG")
-    if args.debug or debug_mode_env:
+    debug_env = os.environ.get("DEBUG")
+    if args.debug or (debug_env and debug_env.lower() in ("true", "1", "yes")):
         logger.setLevel(logging.DEBUG)
+        logger.debug(
+            "Debug mode activated based on command-line argument or environment variable."
+        )
+    else:
+        logger.debug("Debug mode not activated.")
 
     updates = []
 
     if not args.testmail:
+        logger.debug("Executing nvchecker to check for updates.")
         try:
             rfd, wfd = os.pipe()
+            logger.debug("Pipe created for interprocess communication.")
             cmd = [
                 "nvchecker",
                 "--logger",
@@ -281,30 +303,44 @@ def main():
             ]
             if args.file:
                 cmd.extend(["-c", args.file])
+                logger.debug(f"Added configuration file argument: {args.file}")
             if args.keyfile:
                 cmd.extend(["-k", args.keyfile])
+                logger.debug(f"Added keyfile argument: {args.keyfile}")
             if args.tries:
                 cmd.extend(["-t", str(args.tries)])
+                logger.debug(f"Added tries argument: {args.tries}")
             if args.failures:
                 cmd.append("--failures")
+                logger.debug("Added failures flag.")
 
+            logger.debug(f"Running nvchecker with command: {' '.join(cmd)}")
             process = subprocess.Popen(cmd, pass_fds=(wfd,))
+            logger.debug("nvchecker process started.")
             os.close(wfd)
+            logger.debug("Write-end of the pipe closed.")
 
             output = os.fdopen(rfd)
+            logger.debug("Read-end of the pipe opened to capture process output.")
             for o in output:
-                j = json.loads(o)
-                event = j["event"]
-                if event == "updated":
-                    # updates.append("%(name)s updated to version %(version)s" % j)
-                    updates.append(
-                        "%(name)s: updated from %(old_version)s to %(version)s" % j
-                    )
+                try:
+                    j = json.loads(o)
+                    logger.debug(f"Received JSON output: {j}")
+                    event = j.get("event")
+                    if event == "updated":
+                        update_message = (
+                            "%(name)s: updated from %(old_version)s to %(version)s" % j
+                        )
+                        updates.append(update_message)
+                        logger.debug(f"Update detected: {update_message}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error decoding JSON from output line: {o} - {e}")
+            output.close()
 
             ret = process.wait()
+            logger.debug(f"nvchecker process completed with exit code: {ret}")
             if ret != 0:
                 raise subprocess.CalledProcessError(ret, cmd)
-
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running nvchecker: {e}")
             logger.error(f"Command: {e.cmd}")
@@ -315,7 +351,6 @@ def main():
             else:
                 exit(1)
             return
-
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding JSON: {e}")
             logger.debug(traceback.format_exc())
@@ -326,11 +361,18 @@ def main():
             return
 
         if updates:
+            logger.debug(
+                "Updates found. Sending email notification with update details."
+            )
             send_mail("\n".join(updates))
+        else:
+            logger.debug("No updates detected; no email will be sent.")
 
         if args.update:
+            logger.debug("Update flag set. Running nvtake to mark updates as applied.")
             try:
                 rfd, wfd = os.pipe()
+                logger.debug("Pipe created for nvtake process communication.")
                 cmd_take = [
                     "nvtake",
                     "--logger",
@@ -341,12 +383,18 @@ def main():
                 ]
                 if args.file:
                     cmd_take.extend(["--file", args.file])
+                    logger.debug(
+                        f"Added configuration file argument to nvtake: {args.file}"
+                    )
+                logger.debug(f"Running nvtake with command: {' '.join(cmd_take)}")
                 process_take = subprocess.Popen(cmd_take, pass_fds=(wfd,))
+                logger.debug("nvtake process started.")
                 os.close(wfd)
+                logger.debug("Write-end of the nvtake pipe closed.")
                 ret_take = process_take.wait()
+                logger.debug(f"nvtake process completed with exit code: {ret_take}")
                 if ret_take != 0:
                     raise subprocess.CalledProcessError(ret_take, cmd_take)
-
             except subprocess.CalledProcessError as e:
                 logger.error(f"Error running nvtake: {e}")
                 logger.error(f"Command: {e.cmd}")
@@ -357,9 +405,11 @@ def main():
                 else:
                     exit(1)
                 return
-
     else:
+        logger.debug("Test mail mode enabled; sending test email.")
         send_mail("\nTest fast, fail fast, adjust fast.\nTom Peters")
+
+    logger.debug("Main function execution completed.")
 
 
 if __name__ == "__main__":
