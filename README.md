@@ -125,7 +125,7 @@ password = 'pAsSwOrD'                           # use https://myaccount.google.c
 
 [ADDR]
 from = 'firstname.lastname@gmail.com'
-to = 'firstname.lastname+nvchecker@gmail.com'   # you can append a plus ("+") sign and any combination of words or numbers after your email address.
+to = 'firstname.lastname+nvchecker@gmail.com'   # for Gmail recipient addresses, you can add a plus sign ('+') after the username and any combination of words or numbers
 ```
 
 #### *Configuration test*
